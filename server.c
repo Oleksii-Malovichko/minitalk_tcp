@@ -45,15 +45,15 @@ void	connect_tcp(int *client_fd, int *server_fd)
         exit(EXIT_FAILURE);
     }
     printf("Server is listening on port %d\n", PORT);
-    // Принятие подключения клиента
-    *client_fd = accept(*server_fd, (struct sockaddr *)&client_addr, &addr_len);
-    if (*client_fd == -1) {
-        perror("accept failed");
-        close(*server_fd);
-        exit(EXIT_FAILURE);
-    }
-    close(*server_fd);
-    printf("Client connected from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+    // // Принятие подключения клиента
+    // *client_fd = accept(*server_fd, (struct sockaddr *)&client_addr, &addr_len);
+    // if (*client_fd == -1) {
+    //     perror("accept failed");
+    //     close(*server_fd);
+    //     exit(EXIT_FAILURE);
+    // }
+    // // close(*server_fd);
+    // printf("Client connected from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 }
 
 int compare_code(char *str, char *filename)
@@ -71,7 +71,7 @@ int compare_code(char *str, char *filename)
 	while (line)
 	{
 		if (strncmp(str, line, 6) == 0)
-			return (close(fd), atoi(line));
+			return (free(line), close(fd), atoi(line));
 		free(line);
 		line = get_next_line(fd);
 	}
@@ -98,13 +98,14 @@ int redirect_user_data(int code, char *str) // создает новый фай�
 	int fd;
 
 	strcat(str1, str2);
+	free(str2);
 	if (atoi(str) == code)
 		return 0;
 	fd = open(str1, O_RDWR | O_APPEND | O_CREAT, 0777);
 	if (fd < 0)
 		return -1;
 	if (write(fd, str, strlen(str)) == -1)
-		return 1;
+		return -1;
 	close(fd);
 	return (0);
 }
@@ -119,6 +120,7 @@ int add_new_code(char *str, char *filename) // просто создать но�
 	if (write(fd, str, strlen(str)) == -1)
 	{
 		perror("write");
+		close(fd);
 		exit(1);
 	}
 	close(fd);
@@ -129,7 +131,6 @@ void get_client_data(int *client_fd, char *filename)
 	char *str;
 	int i = 0;
 	int code = -1;
-	int new_code;
 
 	str = get_next_line(*client_fd);
 	while (str)
@@ -176,52 +177,61 @@ int main()
 {
     int client_fd;
 	int server_fd;
-    ssize_t bytes_read;
-	int send_message;
+	struct sockaddr_in client_addr;
+	socklen_t addr_len = sizeof(client_addr);
+	pid_t child_pid;
 
+	signal(SIGCHLD, sigchld_handler);
 	connect_tcp(&client_fd, &server_fd);
-	get_client_data(&client_fd, "journal_server.txt");
-    close(client_fd);
-
-    return 0;
+	while (1)
+	{
+		client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &addr_len);
+		if (client_fd == -1)
+		{
+			perror("accept");
+			// continue;
+			return 1;
+		}
+		printf("Client connected from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+		child_pid = fork();
+		if (child_pid == -1)
+		{
+			perror("fork");
+			close(client_fd);
+			// continue;
+			return 1;
+		}
+		if (child_pid == 0) // дочерний процесс
+		{
+			// close()
+			get_client_data(&client_fd, "journal_server.txt");
+			close(client_fd);
+			exit(0);
+		}
+		else
+		{
+			close(client_fd);
+		}
+	}
 }
 
-// int main()
-// {
-//     int client_fd;
-// 	int server_fd;
-// 	// struct sockaddr_in client_addr;
-// 	// socklen_t addr_len = sizeof(client_addr);
-// 	// pid_t child_pid;
-
-// 	// signal(SIGCHLD, sigchld_handler);
-// 	connect_tcp(&client_fd, &server_fd);
-
-// 	while (1)
-// 	{
-// 		child_pid = fork();
-// 		if (child_pid == -1)
-// 		{
-// 			perror("fork");
-// 			close(client_fd);
-// 			continue;
-// 		}
-// 		if (child_pid == 0) // дочерний процесс
-// 		{
-// 			// close()
-// 			get_client_data(&client_fd, "journal_server.txt");
-// 			close(client_fd);
-// 			exit(0);
-// 		}
-// 		else
-// 		{
-// 			waitpid(child_pid, NULL, 0);
-// 			close(client_fd);
-// 		}
-// 	}
-// }
 // sudo netstat -tulnp | grep :8080				проверка занятости порта на котором этот сервер
 // watch cat /tmp/client_file.txt -n 1			просмотр файла в тек времени (обновление по дефолту каждые 2 сек. Можно изменить с помощью -n )
 
 // сделать так, чтобы я мог включать свои библиотеки и не писать сообщение о компиляции (чтобы нужно было только название вводеить типо -lft и все) 
 // cc server.c ~/42_learning/get_next_line/* -Llibft -lft -o server
+
+
+// int main()
+// {
+//     int client_fd;
+// 	int server_fd;
+//     ssize_t bytes_read;
+// 	int send_message;
+
+// 	connect_tcp(&client_fd, &server_fd);
+// 	get_client_data(&client_fd, "journal_server.txt");
+//     close(client_fd);
+
+//     return 0;
+// }
