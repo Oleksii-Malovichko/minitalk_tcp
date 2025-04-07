@@ -1,7 +1,3 @@
-
-
-
-
 #ifndef SERVER_H
 # define SERVER_H
 
@@ -26,6 +22,7 @@
 
 # define PORT 8080
 # define BUFFER_SIZE 1024
+# define POOL "pool.txt"
 
 typedef struct t_user
 {

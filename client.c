@@ -7,7 +7,7 @@
 #define PORT 8080
 #define BUFFER_SIZE 1024
 
-char *g_code = "345678\n";
+char *g_code = "224567\n";
 
 int send_code(int sockfd)
 {
@@ -19,6 +19,7 @@ int main()
 	int sockfd;
 	struct sockaddr_in server_addr;
 	char buffer[BUFFER_SIZE];
+	char *info;
 
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	server_addr.sin_family = AF_INET;
@@ -36,7 +37,7 @@ int main()
 		return 1;
 	}
 	printf("The code was sent\n");
-	
+
 	while (1)
 	{
 		printf("You: ");

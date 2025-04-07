@@ -1,19 +1,9 @@
 #include "server.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
-
-#define PORT 8080
-#define BUFFER_SIZE 1024
-
 void	sigchld_handler(int sig)
 {
 	(void)sig;
-	while (waitpid(-1, NULL, WNOHANG) > 0);
+	while (waitpid(-1, NULL, WNOHANG) > 0); // это нужно чтобы избежать блокировки родительского процесса
 }
 
 void	connect_tcp(int *client_fd, int *server_fd)
@@ -45,132 +35,200 @@ void	connect_tcp(int *client_fd, int *server_fd)
         exit(EXIT_FAILURE);
     }
     printf("Server is listening on port %d\n", PORT);
-    // // Принятие подключения клиента
-    // *client_fd = accept(*server_fd, (struct sockaddr *)&client_addr, &addr_len);
-    // if (*client_fd == -1) {
-    //     perror("accept failed");
-    //     close(*server_fd);
-    //     exit(EXIT_FAILURE);
-    // }
-    // // close(*server_fd);
-    // printf("Client connected from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 }
 
-int compare_code(char *str, char *filename)
+int add_info(char *str, char *filename)
 {
 	int fd;
-	char *line;
 
-	fd = open(filename, O_RDONLY);
-	if (fd < 0)
+	if (!filename)
+	{
+		return (-1);
+	}
+	fd = open(filename, O_WRONLY | O_CREAT | O_APPEND, 0666);
+	if (fd == -1)
 	{
 		perror("open");
-		return (exit(1), 1);
-	}
-	line = get_next_line(fd);
-	while (line)
-	{
-		if (strncmp(str, line, 6) == 0)
-			return (free(line), close(fd), atoi(line));
-		free(line);
-		line = get_next_line(fd);
-	}
-	close(fd);
-	return (-1);
-}
-
-int isnummeric(char *str)
-{
-	int i = 0;
-	while (str[i] && str[i] != '\n')
-	{
-		if (str[i] < '0' || str[i] > '9')
-			return (0);
-		i++;
-	}
-	return (1);
-}
-
-int redirect_user_data(int code, char *str) // создает новый файл, но она работает, только если есть в списке код юзера
-{
-	char str1[50] = "/tmp/";
-	char *str2 = ft_itoa(code);
-	int fd;
-
-	strcat(str1, str2);
-	free(str2);
-	if (atoi(str) == code)
-		return 0;
-	fd = open(str1, O_RDWR | O_APPEND | O_CREAT, 0777);
-	if (fd < 0)
 		return -1;
-	if (write(fd, str, strlen(str)) == -1)
-		return -1;
-	close(fd);
-	return (0);
-}
-
-int add_new_code(char *str, char *filename) // просто создать новый файл для юзера и записать его код в journal_server.txt
-{
-	int fd;
-
-	fd = open(filename, O_WRONLY | O_APPEND);
-	if (fd < 0)
-		return -1;
+	}
 	if (write(fd, str, strlen(str)) == -1)
 	{
 		perror("write");
 		close(fd);
-		exit(1);
+		return -1;
 	}
 	close(fd);
+	return 0;
 }
 
-void get_client_data(int *client_fd, char *filename)
+void	register_user(int code, char *ip, int pid)
+{
+	char	*buffer;
+	char	*ch_pid;
+	char	*ch_code;
+	int		i;
+	int		j;
+
+	ch_code = ft_itoa(code);
+	if (!ch_code)
+		return ;
+	ch_pid = ft_itoa(pid);
+	if (!ch_pid)
+		return free(ch_code);
+	buffer = malloc(strlen(ch_code) + strlen(ip) + strlen(ch_pid) + 4);
+	if (!buffer)
+		return free(ch_pid), free(ch_code);
+	i = 0;
+	while (ch_code[i])
+	{
+		buffer[i] = ch_code[i];
+		i++;
+	}
+	buffer[i] = '\t';
+	i++;
+	j = 0;
+	while (ip[j])
+	{
+		buffer[i] = ip[j];
+		j++;
+		i++;
+	}
+	buffer[i] = ':';
+	i++;
+	j = 0;
+	while (ch_pid[j])
+	{
+		buffer[i] = ch_pid[j];
+		i++;
+		j++;
+	}
+	buffer[i] = '\n';
+	i++;
+	buffer[i] = '\0';
+	add_info(buffer, POOL);
+	free(buffer);
+	free(ch_pid);
+	free(ch_code);
+}
+
+int get_len_file(char *namefile)
+{
+	char *line;
+	int counter;
+	int fd;
+
+	if (!namefile)
+		return -1;
+	fd = open(namefile, O_RDONLY);
+	if (fd < 0)
+		return (-1);
+	counter = 0;
+	line = get_next_line(fd);
+	while (line)
+	{
+		counter += strlen(line);
+		free(line);
+		line = get_next_line(fd);
+	}
+	close(fd);
+	return (counter);
+}
+
+void	remove_user(char *code, char *ip, char *pid)
+{
+	char	*line;
+	char	*buffer;
+	int		len;
+	int		fd1;
+	int		fd2;
+	int		counter;
+	char	built_line[100];
+
+	if (!ip || !pid || !code)
+		return (exit(1));
+	built_line[0] = '\0';
+	strcat(built_line, code);
+	strcat(built_line, "\t");
+	strcat(built_line, ip);
+	strcat(built_line, ":");
+	strcat(built_line, pid);
+	strcat(built_line, "\n");
+	printf("built_line: %s\n", built_line);
+	len = get_len_file(POOL);
+	fd1 = open(POOL, O_RDONLY);
+	if (fd1 == -1 || len <= 0)
+	{
+		perror("open");
+		return (exit(1));
+	}
+	buffer = malloc(len + 1);
+	buffer[0] = '\0';
+	line = get_next_line(fd1);
+	counter = 0;
+	while (line)
+	{
+		if (strcmp(line, built_line) == 0)
+		{
+			free(line);
+			line = get_next_line(fd1);
+			continue ;
+		}
+		strcat(buffer, line);
+		counter += strlen(line);
+		free(line);
+		line = get_next_line(fd1);
+	}
+	close(fd1);
+	fd2 = open(POOL, O_WRONLY | O_TRUNC);
+	if (write(fd2, buffer, strlen(buffer)) == -1)
+	{
+		perror("write");
+		return (exit(1));
+	}
+}
+
+void	remember_data(char *str, char *code)
+{
+	char buffer[50] = "/tmp/";
+	
+	if (!code || !str)
+		return ;
+	strcat(buffer, code);
+	add_info(str, buffer);
+}
+
+void get_client_data(int *client_fd, char *filename, char *ip, int pid)
 {
 	char *str;
 	int i = 0;
 	int code = -1;
+	int connected = -1;
+	char *t2 = ft_itoa(pid);
 
 	str = get_next_line(*client_fd);
 	while (str)
 	{
-		if (i == 0) // передача специального кода, показывающая, какой юзер пишет
+		if (i == 0)
 		{
-			if (strlen(str) != 7)
-				break ;
-			if (isnummeric(str))
-				code = compare_code(str, filename);
+			code = atoi(str);
+			register_user(code, ip, pid);
 		}
-		if (code != -1)// файл с записями клиента существует
+		if (code != -1) // подключение пользователя
 		{
-			if (redirect_user_data(code, str) == -1)
-			{
-				perror("redirect_user_data");
-				free(str);
-				return ;
-			}
+			remember_data(str, ft_itoa(code));
+			connected = connect_users(str);
 		}
-		else
-		{
-			if (isnummeric(str))
-			{
-				if (add_new_code(str, filename) == -1)
-				{
-					perror("create_new_user_file");
-					free(str);
-					return ;
-				}
-				code = atoi(str);
-			}
-		}
+		// if (connected)
+			// redirect_data(str, code);
 		printf("code: %d\n", code);
 		printf("str: %s\n", str);
 		free(str);
 		str = get_next_line(*client_fd);
 		i++;
 	}
-	free(str);
+	remove_user(ft_itoa(code), ip, t2);
+	free(t2);
+	printf("Client logged out\n");
 }
 
 int main()
@@ -186,25 +244,24 @@ int main()
 	while (1)
 	{
 		client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &addr_len);
-		if (client_fd == -1)
+		if (client_fd == -1) // если не получилось принять подключение пробуем снова
 		{
 			perror("accept");
-			// continue;
-			return 1;
+			continue;
+			// return 1;
 		}
 		printf("Client connected from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 		child_pid = fork();
-		if (child_pid == -1)
+		if (child_pid == -1) // если не получилось создать процесс пробуем снова
 		{
 			perror("fork");
 			close(client_fd);
-			// continue;
-			return 1;
+			continue;
+			// return 1;
 		}
 		if (child_pid == 0) // дочерний процесс
 		{
-			// close()
-			get_client_data(&client_fd, "journal_server.txt");
+			get_client_data(&client_fd, "journal_server.txt", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 			close(client_fd);
 			exit(0);
 		}
@@ -213,6 +270,7 @@ int main()
 			close(client_fd);
 		}
 	}
+	close(server_fd);
 }
 
 // sudo netstat -tulnp | grep :8080				проверка занятости порта на котором этот сервер
@@ -220,18 +278,3 @@ int main()
 
 // сделать так, чтобы я мог включать свои библиотеки и не писать сообщение о компиляции (чтобы нужно было только название вводеить типо -lft и все) 
 // cc server.c ~/42_learning/get_next_line/* -Llibft -lft -o server
-
-
-// int main()
-// {
-//     int client_fd;
-// 	int server_fd;
-//     ssize_t bytes_read;
-// 	int send_message;
-
-// 	connect_tcp(&client_fd, &server_fd);
-// 	get_client_data(&client_fd, "journal_server.txt");
-//     close(client_fd);
-
-//     return 0;
-// }

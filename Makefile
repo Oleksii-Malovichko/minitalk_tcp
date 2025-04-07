@@ -23,5 +23,8 @@ fclean: clean
 clean:
 	rm -rf $(NAME1)
 	rm -rf $(NAME2)
+	rm -rf client1
+	rm -rf client2
+	rm -rf client3
 
 .PHONY: all re clean fclean
