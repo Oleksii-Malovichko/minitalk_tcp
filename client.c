@@ -3,15 +3,34 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 
 #define PORT 8080
 #define BUFFER_SIZE 1024
 
-char *g_code = "224567\n";
+char *g_code = "124567\n";
 
 int send_code(int sockfd)
 {
 	return (send(sockfd, g_code, strlen(g_code), 0));
+}
+
+void	*receive_msg(void *arg)
+{
+	int sockfd = *(int *)arg;
+	char buffer[BUFFER_SIZE];
+	while (1)
+	{
+		int len = recv(sockfd, buffer, sizeof(buffer - 1), 0);
+		if (len <= 0)
+		{
+			printf("Connection closed or error ocurred\n");
+			break;
+		}
+		buffer[len] = '\0';
+		printf("Server: %s\n", buffer);
+	}
+	return (NULL);
 }
 
 int main()
@@ -37,6 +56,15 @@ int main()
 		return 1;
 	}
 	printf("The code was sent\n");
+	
+	pthread_t recv_thread;
+
+	if (pthread_create(&recv_thread, NULL, receive_msg, (void *)&sockfd) != 0)
+	{
+		perror("pthread");
+		close(sockfd);
+		return 1;
+	}
 
 	while (1)
 	{
@@ -44,9 +72,13 @@ int main()
 		fgets(buffer, sizeof(buffer), stdin);
 		buffer[strcspn(buffer, "\n")] == 0;
 		if (send(sockfd, buffer, strlen(buffer), 0) == -1)
-			break ;
+		break ;
 		if (strcmp(buffer, "exit") == 0)
-			break ;
+		break ;
 	}
 	close(sockfd);
+	pthread_join(recv_thread, NULL);
+	close(sockfd);
 }
+
+// printf("Write the ip:port from client, you want to connect to [FORMAT: 0.0.0.0:12345]: ");

@@ -1,5 +1,8 @@
 #include "server.h"
 
+int client_fds[MAX_CLIENTS];
+int client_counter = 0;
+
 void	sigchld_handler(int sig)
 {
 	(void)sig;
@@ -197,6 +200,24 @@ void	remember_data(char *str, char *code)
 	add_info(str, buffer);
 }
 
+void	send_to_all_clients(char *msg)
+{
+	if (!msg)
+		return ;
+	int i = 0;
+	while (i < client_counter)
+	{
+		printf("client_fd[i]: %d\n", client_fds[i]);
+		if (send(client_fds[i], msg, strlen(msg), 0) == -1)
+		{
+			perror("send");
+		}
+		else
+			printf("Message was sent to client %d\n", i + 1);
+		i++;
+	}
+}
+
 void get_client_data(int *client_fd, char *filename, char *ip, int pid)
 {
 	char *str;
@@ -204,6 +225,7 @@ void get_client_data(int *client_fd, char *filename, char *ip, int pid)
 	int code = -1;
 	int connected = -1;
 	char *t2 = ft_itoa(pid);
+	char *another_client_data;
 
 	str = get_next_line(*client_fd);
 	while (str)
@@ -213,11 +235,11 @@ void get_client_data(int *client_fd, char *filename, char *ip, int pid)
 			code = atoi(str);
 			register_user(code, ip, pid);
 		}
-		if (code != -1) // подключение пользователя
-		{
-			remember_data(str, ft_itoa(code));
-			connected = connect_users(str);
-		}
+		remember_data(str, ft_itoa(code));
+		// if (i == 1) // подключение пользователя
+		// {
+		// }
+		send_to_all_clients(str);
 		// if (connected)
 			// redirect_data(str, code);
 		printf("code: %d\n", code);
@@ -237,6 +259,7 @@ int main()
 	int server_fd;
 	struct sockaddr_in client_addr;
 	socklen_t addr_len = sizeof(client_addr);
+	// struct pollfd fds[MAX_CLIENTS + 1];
 	pid_t child_pid;
 
 	signal(SIGCHLD, sigchld_handler);
@@ -249,6 +272,18 @@ int main()
 			perror("accept");
 			continue;
 			// return 1;
+		}
+		if (client_counter < MAX_CLIENTS)
+		{
+			printf("[main] client_fd: %d\n", client_fd);
+			client_fds[client_counter] = client_fd;
+			client_counter++;
+			printf("Client №%d connected\n", client_counter);
+		}
+		else
+		{
+			printf("Max clients reached. Rejecting client\n");
+			close(client_fd);
 		}
 		printf("Client connected from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 		child_pid = fork();
